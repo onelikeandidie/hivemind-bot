@@ -22,7 +22,11 @@ struct State {
 
 impl State {
     fn to_string(&self) -> String {
-        let strings = [self.voting_box.0.to_string(), " voted yes, ".to_owned(), self.voting_box.1.to_string(), " voted no!".to_owned()];
+        let strings = [
+            self.voting_box.0.to_string(), 
+            " voted yes, ".to_owned(), 
+            self.voting_box.1.to_string(), 
+            " voted no!".to_owned()];
         strings.concat()
     }
 
@@ -60,12 +64,12 @@ async fn handle_message(client: &TwitchIRCClient<SecureTCPTransport, StaticLogin
             if is_mod(&msg.sender) {
                 state.is_counting = false;
                 let message = [
-                    "@".to_owned(), 
-                    msg.sender.name.clone().to_owned(), 
-                    " ".to_owned(), 
-                    state.to_string()
+                        "@".to_owned(),
+                        msg.sender.name.clone().to_owned(),
+                        " ".to_owned(),
+                        state.to_string()
                     ].concat();
-                    client.say(state.channel_name.to_owned(), message).await.unwrap();
+                client.say(state.channel_name.to_owned(), message).await.unwrap();
             }
         }
         "!reset" => {
@@ -73,13 +77,19 @@ async fn handle_message(client: &TwitchIRCClient<SecureTCPTransport, StaticLogin
                 state.is_counting = true;
                 state.voting_box = Votes(0,0);
                 state.who_voted = Vec::new();
-                client.say(state.channel_name.to_owned(), "Reset votes!".to_owned()).await.unwrap();
+                client.say(
+                    state.channel_name.to_owned(), 
+                    "Reset votes!".to_owned()
+                ).await.unwrap();
             }
         }
         "!stop" => {
             if is_mod(&msg.sender) {
                 state.is_counting = false;
-                client.say(state.channel_name.to_owned(), "Stopped counting!".to_owned()).await.unwrap();
+                client.say(
+                    state.channel_name.to_owned(), 
+                    "Stopped counting!".to_owned()
+                ).await.unwrap();
             }
         }
         _ => {}
@@ -92,12 +102,13 @@ pub async fn main() {
     let bot_name = "onelikeandishutdown".to_owned();
     let channel_name = "onelikeandidie".to_owned();
 
-    let mut state: State = State{
-        is_counting: true, 
-        voting_box: Votes(0,0), 
+    let mut state = State{
+        is_counting: true,
+        voting_box: Votes(0,0),
         who_voted: Vec::new(),
-        bot_name: bot_name.clone(), 
-        channel_name: channel_name.clone()};
+        bot_name: bot_name.clone(),
+        channel_name: channel_name.clone()
+    };
     
     let config = ClientConfig::new_simple(
         StaticLoginCredentials::new(state.bot_name.clone(), Some(oauth_token))
