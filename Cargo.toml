@@ -10,3 +10,6 @@ twitch-irc = { version = "3.0.1", features = ["refreshing-token"] }
 tokio = { version = "1.12.0", features = ["full"] }
 async-trait = "0.1.51"
 serde = "1.0.130"
+chrono = "0.4.19"
+inputbot = "0.5.1"
+http = "0.2.5"
