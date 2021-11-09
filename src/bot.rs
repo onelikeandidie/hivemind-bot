@@ -10,4 +10,5 @@ use crate::util;
 pub trait Bot {
     fn is_enabled(&mut self) -> bool;
     async fn handle_message(&mut self, global_state: &util::GlobalState, client: &TwitchIRCClient<SecureTCPTransport, StaticLoginCredentials>, msg: &PrivmsgMessage);
+    async fn update(&mut self, global_state: &util::GlobalState, client: &TwitchIRCClient<SecureTCPTransport, StaticLoginCredentials>);
 }

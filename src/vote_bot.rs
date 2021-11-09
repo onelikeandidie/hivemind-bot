@@ -125,4 +125,8 @@ impl Bot for VoteBot {
             _ => {}
         }
     }
+
+    async fn update(&mut self, _global_state: &GlobalState, _client: &twitch_irc::TwitchIRCClient<twitch_irc::SecureTCPTransport, twitch_irc::login::StaticLoginCredentials>) {
+        //println!("Vote Bot Updated");
+    }
 }
