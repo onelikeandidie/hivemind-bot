@@ -14,6 +14,9 @@ Currently there is 2 votables:
   - Uses a InputBot to input the `Ctrl+Q` when your client is open and focused
     - `(it also does this when your client is not open so it'll input into whatever other app you have open, have fun)`
 
+One last thing here, some commands only work with moderators but voting works
+with any user. I'll put a detailed list of commands one day.
+
 # How to use
 
 First you need to make a copy of `config_default.toml` and name it

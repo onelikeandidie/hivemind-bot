@@ -93,7 +93,7 @@ impl Bot for VoteBot {
                 }
             }
             "!RESULTS_VOTES" => {
-                if is_mod(&msg.sender) {
+                if is_mod(&msg) {
                     self.state.stop_counting();
                     let message = [
                         "@".to_owned(),
@@ -105,7 +105,7 @@ impl Bot for VoteBot {
                 }
             }
             "!RESET_VOTES" => {
-                if is_mod(&msg.sender) {
+                if is_mod(&msg) {
                     self.state.reset();
                     client.say(
                         global_state.channel_name.to_owned(), 
@@ -114,7 +114,7 @@ impl Bot for VoteBot {
                 }
             }
             "!STOP_VOTES" => {
-                if is_mod(&msg.sender) {
+                if is_mod(&msg) {
                     self.state.stop_counting();
                     client.say(
                         global_state.channel_name.to_owned(), 

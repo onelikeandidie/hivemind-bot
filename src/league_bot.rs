@@ -1,5 +1,4 @@
 use std::{fmt::Display, io::Read, time::Duration};
-use hyper::{Response, body::HttpBody, http::request};
 use inputbot::KeybdKey;
 use tokio::time::sleep;
 //use std::{thread, time::{Duration}};
@@ -200,7 +199,7 @@ impl Bot for LeagueBot {
                 }
             }
             "!RESULTS_LEAGUE" => {
-                if is_mod(&msg.sender) {
+                if is_mod(&msg) {
                     self.state.stop_counting();
                     let message = self.state.get_results_message(Some(msg));
                     client.say(global_state.channel_name.to_owned(), message).await.unwrap();
@@ -208,12 +207,12 @@ impl Bot for LeagueBot {
             }
             "!UP_LEAGUE" |
             "!RESET_LEAGUE" => {
-                if is_mod(&msg.sender) {
+                if is_mod(&msg) {
                     self.state.should_poll_for_level = true;
                 }
             }
             "!STOP_LEAGUE" => {
-                if is_mod(&msg.sender) {
+                if is_mod(&msg) {
                     self.state.stop_counting();
                     client.say(
                         global_state.channel_name.to_owned(), 
@@ -222,7 +221,7 @@ impl Bot for LeagueBot {
                 }
             }
             "!RECONNECT_LEAGUE" => {
-                if is_mod(&msg.sender) {
+                if is_mod(&msg) {
                     self.state.http_client_attempt_connect = true;
                 }
             }
