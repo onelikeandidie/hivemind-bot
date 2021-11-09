@@ -1,3 +1,5 @@
+# Hivemind Bot
+
 This is a Twitch.tv chatbot written in Rust. It is meant for chat to control
 some aspects of the stream with the use of Polls.
 
