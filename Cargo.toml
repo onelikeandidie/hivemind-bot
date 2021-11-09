@@ -12,5 +12,6 @@ async-trait = "0.1.51"
 serde = "1.0.130"
 chrono = "0.4.19"
 inputbot = "0.5.1"
-http = "0.2.5"
+hyper = "0.14"
+reqwest = { version = "0.11.6", features = ["json"] }
 toml = "0.5.8"

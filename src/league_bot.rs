@@ -1,11 +1,11 @@
-use std::{fmt::Display, time::Duration};
-
+use std::{fmt::Display, io::Read, time::Duration};
+use hyper::{Response, body::HttpBody, http::request};
 use inputbot::KeybdKey;
 use tokio::time::sleep;
 //use std::{thread, time::{Duration}};
 use twitch_irc::message::{PrivmsgMessage, TwitchUserBasics};
 use async_trait::async_trait;
-use crate::{bot::{Bot}, util::{GlobalState, is_mod}};
+use crate::{bot::{Bot}, util::{self, GlobalState, LeagueResponse, is_mod}};
 
 #[derive(Clone, Copy)]
 // Q, W, E, R
@@ -50,6 +50,17 @@ pub struct State {
     pub who_voted: Vec<String>,
     pub reset_timestamp: i64,
     pub bot_is_enabled: bool,
+
+    //pub http_client: hyper::Client<hyper::client::HttpConnector>,
+    pub http_client: reqwest::Client,
+    pub http_client_attempt_connect: bool,
+    //pub url: hyper::Uri,
+    //pub url: reqwest::Url,
+    pub url: String,
+
+    pub last_league_state: Option<LeagueResponse>,
+    pub last_request_timestamp: i64,
+    pub should_poll_for_level: bool
 }
 
 
@@ -121,12 +132,31 @@ impl State {
 
 impl Default for State {
     fn default() -> Self {
+        // Load RITO GAMES certificate
+        let mut buf = Vec::new();
+        std::fs::File::open("external/riotgames.pem").unwrap()
+            .read_to_end(&mut buf).unwrap();
+        let cert = reqwest::Certificate::from_pem(&buf).unwrap();
+        // Create a http client that uses the certificate
+        let client = reqwest::Client::builder()
+            .add_root_certificate(cert)
+            .build().unwrap();
+        // Parse the URL to the game client end point
+        let url = "https://127.0.0.1:2999/liveclientdata/activeplayer".to_owned();
+
         Self {
             is_counting: false,
             voting_box: Votes(0, 0, 0, 0),
             who_voted: Vec::new(),
             reset_timestamp: chrono::offset::Local::now().timestamp_millis(),
             bot_is_enabled: true,
+
+            http_client: client,
+            http_client_attempt_connect: true,
+            url: url,
+            last_request_timestamp: chrono::offset::Local::now().timestamp_millis(),
+            last_league_state: Some(LeagueResponse::default()),
+            should_poll_for_level: false,
         }
     }
 }
@@ -179,11 +209,7 @@ impl Bot for LeagueBot {
             "!UP_LEAGUE" |
             "!RESET_LEAGUE" => {
                 if is_mod(&msg.sender) {
-                    self.state.reset();
-                    client.say(
-                        global_state.channel_name.to_owned(), 
-                        "Vote Q, W, E, R to level an ability!".to_owned()
-                    ).await.unwrap();
+                    self.state.should_poll_for_level = true;
                 }
             }
             "!STOP_LEAGUE" => {
@@ -193,6 +219,11 @@ impl Bot for LeagueBot {
                         global_state.channel_name.to_owned(), 
                         "Stopped counting!".to_owned()
                     ).await.unwrap();
+                }
+            }
+            "!RECONNECT_LEAGUE" => {
+                if is_mod(&msg.sender) {
+                    self.state.http_client_attempt_connect = true;
                 }
             }
             _ => {}
@@ -215,6 +246,23 @@ impl Bot for LeagueBot {
                 ].concat());
             
             tokio::spawn(LeagueBot::level_up_ability(self.state.voting_box));
+        }
+
+        // Check the client for automated leveling
+        if self.state.http_client_attempt_connect {
+            //println!("[LeagueBot] Connecting to the league client");
+            self.check_league_client().await;
+            //println!("[LeagueBot] Finnish");
+        }
+
+        // Check if the bot should poll for level
+        if self.state.should_poll_for_level {
+            self.state.reset();
+            client.say(
+                global_state.channel_name.to_owned(), 
+                "Vote Q, W, E, R to level an ability!".to_owned()
+            ).await.unwrap();
+            self.state.should_poll_for_level = false;
         }
     }
 }
@@ -242,5 +290,64 @@ impl LeagueBot {
                 "Leveled up"
                 ].concat(), vote);
         }
+    }
+
+    async fn check_league_client(&mut self) {
+        // Run the casul GET request to the client backend
+        match self.state.http_client.get(self.state.url.clone()).send().await {
+            Ok(res) => {
+                //println!("{:?}", res);
+                if res.status() == 200 {
+                    let league_response: util::LeagueResponse = res.json().await.unwrap();
+                    //println!("{:?}", league_response);
+                    if let Some(llr) = &self.state.last_league_state {
+                        if league_response != *llr {
+                            //println!("{:?}", league_response);
+                            //println!("{:?}", llr);
+                            println!("[LeagueBot] Player State changed");
+                            // Check if the player leveled up
+                            if league_response.level > llr.level{
+                                // Remember the poll for level
+                                println!("[LeagueBot] Level difference: {} -> {}", llr.level, league_response.level);
+                                self.state.should_poll_for_level = true;
+                            }
+                            self.state.last_league_state = Some(league_response);
+                            self.state.last_request_timestamp = chrono::offset::Local::now().timestamp_millis();
+                        }
+                    }
+                }
+            },
+            Err(err) => {
+                println!("{} Error connecting to the league client\n{}", "[LeagueBot]", err);
+                self.state.http_client_attempt_connect = false;
+            },
+        };
+            //.json::<HashMap<String, String>>()
+            //.await?;
+
+        //let mut resp = self.state.http_client.get(self.state.url.clone()).await.unwrap();
+        //println!("Response: {}", resp.status());
+        //while let Some(chunk) = resp.body_mut().data().await {
+        //    println!("{:?}", (&chunk).as_ref().unwrap());
+        //}
+
+        //match self.state.http_client.get(self.state.url.clone()).await {
+        //    Ok(mut res) => {
+        //        println!("{:?}", res);
+        //        if res.status() == 200 {
+        //            //let body = res.body_mut();
+        //            while let Some(next) = res.data().await {
+        //                let chunk = next.unwrap();
+        //                println!("{:?}", chunk);
+        //            }
+        //            self.state.last_request_timestamp = chrono::offset::Local::now().timestamp_millis();
+        //        }
+        //    },
+        //    Err(err) => {
+        //        println!("{} Error connecting to the league client\n{}", "[LeagueBot]", err);
+        //        self.state.http_client_is_connected = false;
+        //    },
+        //}
+        //self.state.reset();
     }
 }
