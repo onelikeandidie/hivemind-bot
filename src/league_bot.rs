@@ -1,8 +1,7 @@
 use std::{thread, time::{Duration}};
-use tokio::{sync::oneshot, time::timeout};
 use twitch_irc::message::{PrivmsgMessage, TwitchUserBasics};
 use async_trait::async_trait;
-use crate::{bot::{Bot, GlobalBotState}, util};
+use crate::{bot::{Bot}, util::{GlobalState, is_mod}};
 
 // Q, W, E, R
 pub struct Votes (i32, i32, i32, i32);
@@ -103,7 +102,7 @@ impl Bot for LeagueBot {
         self.state.bot_is_enabled
     }
 
-    async fn handle_message(&mut self, global_state: &GlobalBotState, client: &twitch_irc::TwitchIRCClient<twitch_irc::SecureTCPTransport, twitch_irc::login::StaticLoginCredentials>, msg: &PrivmsgMessage) {
+    async fn handle_message(&mut self, global_state: &GlobalState, client: &twitch_irc::TwitchIRCClient<twitch_irc::SecureTCPTransport, twitch_irc::login::StaticLoginCredentials>, msg: &PrivmsgMessage) {
         match msg.message_text.to_uppercase().as_str() {
             "Q" | "1" => {
                 if self.state.can_vote(&msg.sender) {
@@ -126,14 +125,14 @@ impl Bot for LeagueBot {
                 }
             }
             "!RESULTS_LEAGUE" => {
-                if util::is_mod(&msg.sender) {
+                if is_mod(&msg.sender) {
                     self.state.stop_counting();
                     let message = self.state.get_results_message(msg);
                     client.say(global_state.channel_name.to_owned(), message).await.unwrap();
                 }
             }
             "!RESET_LEAGUE" => {
-                if util::is_mod(&msg.sender) {
+                if is_mod(&msg.sender) {
                     self.state.reset();
                     client.say(
                         global_state.channel_name.to_owned(), 
@@ -142,7 +141,7 @@ impl Bot for LeagueBot {
                 }
             }
             "!UP_LEAGUE" => {
-                if util::is_mod(&msg.sender) {
+                if is_mod(&msg.sender) {
                     // WARNING: THIS DOESN'T WORK BECAUSE THREAD IS ASLEEP!
                     // Reset the votes
                     self.state.reset();
@@ -162,7 +161,7 @@ impl Bot for LeagueBot {
                 }
             }
             "!STOP_LEAGUE" => {
-                if util::is_mod(&msg.sender) {
+                if is_mod(&msg.sender) {
                     self.state.stop_counting();
                     client.say(
                         global_state.channel_name.to_owned(), 

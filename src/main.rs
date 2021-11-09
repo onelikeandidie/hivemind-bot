@@ -13,11 +13,11 @@ use crate::bot::Bot;
 
 #[tokio::main]
 pub async fn main() {
-    let oauth_token = "5dqam1yud0u6f962xblrkzfy8pid1n".to_owned();
+    let oauth_token = "token".to_owned();
     let bot_name = "onelikeandishutdown".to_owned();
     let channel_name = "onelikeandidie".to_owned();
 
-    let mut state = bot::GlobalBotState { 
+    let state = util::GlobalState { 
         bot_name: bot_name.clone(),
         channel_name: channel_name.clone()
     };
@@ -35,20 +35,27 @@ pub async fn main() {
     // first thing you should do: start consuming incoming messages,
     // otherwise they will back up.
     let thread_client = client.clone();
+    let thread_state = state.clone();
     let join_handle = tokio::spawn(async move {
         while let Some(message) = incoming_messages.recv().await {
             //println!("Received message: {:?}", message);
             match message {
                 ServerMessage::Privmsg(msg) => {
-                    vote_bot_instance.handle_message(&state, &thread_client, &msg).await;
-                    league_bot_instance.handle_message(&state, &thread_client, &msg).await;
+                    vote_bot_instance.handle_message(&thread_state, &thread_client, &msg).await;
+                    league_bot_instance.handle_message(&thread_state, &thread_client, &msg).await;
                 },
                 //ServerMessage::ClearChat(_) => todo!(),
                 //ServerMessage::ClearMsg(_) => todo!(),
                 //ServerMessage::GlobalUserState(_) => todo!(),
                 //ServerMessage::HostTarget(_) => todo!(),
                 //ServerMessage::Join(_) => todo!(),
-                //ServerMessage::Notice(_) => todo!(),
+                ServerMessage::Notice(msg) => {
+                    println!("Recieved notice: {:?}", msg.message_text);
+                    if msg.message_text == "Login authentication failed" {
+                        thread_client.part(thread_state.channel_name.clone());
+                        incoming_messages.close();
+                    }
+                },
                 //ServerMessage::Part(_) => todo!(),
                 //ServerMessage::Ping(_) => todo!(),
                 //ServerMessage::Pong(_) => todo!(),

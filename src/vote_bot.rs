@@ -1,6 +1,6 @@
 use twitch_irc::message::TwitchUserBasics;
 use async_trait::async_trait;
-use crate::{bot::{Bot, GlobalBotState}, util};
+use crate::{bot::{Bot}, util::{GlobalState, is_mod}};
 
 pub struct Votes (i32, i32);
 
@@ -80,7 +80,7 @@ impl Bot for VoteBot {
         self.state.bot_is_enabled
     }
 
-    async fn handle_message(&mut self, global_state: &GlobalBotState, client: &twitch_irc::TwitchIRCClient<twitch_irc::SecureTCPTransport, twitch_irc::login::StaticLoginCredentials>, msg: &twitch_irc::message::PrivmsgMessage) {
+    async fn handle_message(&mut self, global_state: &GlobalState, client: &twitch_irc::TwitchIRCClient<twitch_irc::SecureTCPTransport, twitch_irc::login::StaticLoginCredentials>, msg: &twitch_irc::message::PrivmsgMessage) {
         match msg.message_text.to_uppercase().as_str() {
             "1" | "YES" => {
                 if self.state.can_vote(&msg.sender) {
@@ -93,7 +93,7 @@ impl Bot for VoteBot {
                 }
             }
             "!RESULTS_VOTES" => {
-                if util::is_mod(&msg.sender) {
+                if is_mod(&msg.sender) {
                     self.state.stop_counting();
                     let message = [
                         "@".to_owned(),
@@ -105,7 +105,7 @@ impl Bot for VoteBot {
                 }
             }
             "!RESET_VOTES" => {
-                if util::is_mod(&msg.sender) {
+                if is_mod(&msg.sender) {
                     self.state.reset();
                     client.say(
                         global_state.channel_name.to_owned(), 
@@ -114,7 +114,7 @@ impl Bot for VoteBot {
                 }
             }
             "!STOP_VOTES" => {
-                if util::is_mod(&msg.sender) {
+                if is_mod(&msg.sender) {
                     self.state.stop_counting();
                     client.say(
                         global_state.channel_name.to_owned(), 
