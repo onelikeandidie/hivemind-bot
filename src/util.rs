@@ -58,6 +58,17 @@ pub struct LeaguePlayerAbilities {
     pub Passive: LeagueAbility,
 }
 
+impl LeaguePlayerAbilities {
+    pub fn check_used_points(& self) -> i32 {
+        let mut i = 0;
+        if let Some(q_level) = self.Q.abilityLevel {i += q_level};
+        if let Some(w_level) = self.W.abilityLevel {i += w_level};
+        if let Some(e_level) = self.E.abilityLevel {i += e_level};
+        if let Some(r_level) = self.R.abilityLevel {i += r_level};
+        i
+    }
+}
+
 impl Default for LeaguePlayerAbilities {
     fn default() -> Self {
         Self { Q: Default::default(), W: Default::default(), E: Default::default(), R: Default::default(), Passive: Default::default() }
