@@ -1,5 +1,5 @@
-use std::{fmt::Display, io::Read, time::Duration};
-use inputbot::KeybdKey;
+use std::{env, fmt::Display, io::Read, time::Duration};
+use inputbot::{KeySequence, KeybdKey};
 use tokio::time::sleep;
 //use std::{thread, time::{Duration}};
 use twitch_irc::message::{PrivmsgMessage, TwitchUserBasics};
@@ -44,24 +44,25 @@ impl Display for Poggers {
 }
 
 pub struct State {
+    // Voting Related Stuff
     pub is_counting: bool,
     pub voting_box: Votes,
     pub who_voted: Vec<String>,
     pub reset_timestamp: i64,
     pub bot_is_enabled: bool,
-
-    //pub http_client: hyper::Client<hyper::client::HttpConnector>,
+    // League Client Related Stuff
     pub http_client: reqwest::Client,
     pub http_client_attempt_connect: bool,
-    //pub url: hyper::Uri,
-    //pub url: reqwest::Url,
+    pub http_client_connected: bool,
     pub url: String,
-
+    // League Votes Related Stuff
     pub last_league_state: Option<LeagueResponse>,
     pub last_request_timestamp: i64,
     pub should_poll_for_level: bool,
     pub force_check_level: bool,
     pub last_level: i32,
+    pub ff_counter: i32,
+    pub ff_reset_timestamp: i64,
 }
 
 
@@ -79,18 +80,18 @@ impl State {
         ];
         strings.concat()
     }
-
+    /** Reset the votes and start counting */
     pub fn reset(&mut self) {
         self.is_counting = true;
         self.voting_box = Votes(0, 0, 0, 0);
         self.who_voted = Vec::new();
         self.reset_timestamp = chrono::offset::Local::now().timestamp_millis();
     }
-
+    /** Stop counting */
     pub fn stop_counting(&mut self) {
         self.is_counting = false;
     }
-
+    /** Add a vote to the box, the `to` is the index of the box to add to */
     pub fn add_vote(&mut self, amount: i32, to: i8, voter: &TwitchUserBasics) {
         match to {
             0 => {
@@ -109,12 +110,16 @@ impl State {
         }
         self.who_voted.push(voter.id.clone())
     }
-
+    /** Returns true if a user has not voted */
     pub fn can_vote(&self, voter: &TwitchUserBasics) -> bool {
         self.is_counting && !self.who_voted.contains(&voter.id)
     }
-
-    pub fn get_results_message(&self, msg: Option<&PrivmsgMessage>) -> String {
+    /** 
+    Compile a small string reading out the votebox into a message, if a msg is
+    provided with `Some(msg)` the command will use the message's sender as the
+    user to mention on the resulting message.
+    */
+    pub fn get_results_message(&self, msg: Option<&PrivmsgMessage>, user_to_mention: Option<&String>) -> String {
         if let Some(msg) = msg {
             return [
                 "@".to_owned(),
@@ -123,11 +128,21 @@ impl State {
                 self.to_string()
             ].concat()
         } else {
-            return [
-                "@onelikeandidie ".to_owned(),
-                self.to_string()
-            ].concat()
+            if let Some(user_to_mention) = user_to_mention {
+                return [
+                    "@".to_owned(),
+                    user_to_mention.to_owned(),
+                    self.to_string()
+                ].concat()
+            } else {
+                return self.to_string();
+            }
         }
+    }
+    /** Resets the ff counter and it's associated timestamp */
+    pub fn ff_reset(&mut self) {
+        self.ff_counter = 0;
+        self.ff_reset_timestamp = chrono::offset::Local::now().timestamp_millis();
     }
 }
 
@@ -145,21 +160,26 @@ impl Default for State {
         // Parse the URL to the game client end point
         let url = "https://127.0.0.1:2999/liveclientdata/activeplayer".to_owned();
 
+        let now = chrono::offset::Local::now().timestamp_millis();
         Self {
             is_counting: false,
             voting_box: Votes(0, 0, 0, 0),
             who_voted: Vec::new(),
-            reset_timestamp: chrono::offset::Local::now().timestamp_millis(),
+            reset_timestamp: now.clone(),
             bot_is_enabled: true,
 
             http_client: client,
             http_client_attempt_connect: true,
+            http_client_connected: false,
             url: url,
-            last_request_timestamp: chrono::offset::Local::now().timestamp_millis(),
+
+            last_request_timestamp: now.clone(),
             last_league_state: Some(LeagueResponse::default()),
             should_poll_for_level: false,
             force_check_level: true,
             last_level: 0,
+            ff_counter: 0,
+            ff_reset_timestamp: now.clone(),
         }
     }
 }
@@ -202,10 +222,13 @@ impl Bot for LeagueBot {
                     self.state.add_vote(1, 3, &msg.sender);
                 }
             }
+            "FF" => {
+                self.state.ff_counter += 1;
+            }
             "!RESULTS_LEAGUE" => {
                 if is_mod(&msg) {
                     self.state.stop_counting();
-                    let message = self.state.get_results_message(Some(msg));
+                    let message = self.state.get_results_message(Some(msg), None);
                     client.say(global_state.channel_name.to_owned(), message).await.unwrap();
                 }
             }
@@ -235,7 +258,8 @@ impl Bot for LeagueBot {
     }
 
     async fn update(&mut self, global_state: &GlobalState, client: &twitch_irc::TwitchIRCClient<twitch_irc::SecureTCPTransport, twitch_irc::login::StaticLoginCredentials>) {
-        //println!("League Bot Updated");
+        // Declare the current time
+        let now = chrono::offset::Local::now().timestamp_millis();
         
         // Check the client for automated leveling
         if self.state.http_client_attempt_connect {
@@ -244,50 +268,62 @@ impl Bot for LeagueBot {
             //println!("[LeagueBot] Finnish");
         }
         
-        // Force calculate levelups
-        if self.state.force_check_level {
-            if let Some(lls) = &self.state.last_league_state {
-                self.state.last_level = lls.abilities.check_used_points();
-                println!("[LeagueBot] Level was force checked, new level: {}", self.state.last_level);
+        // Check if the league client is connected
+        if self.state.http_client_connected {
+            // Force calculate levelups
+            if self.state.force_check_level {
+                if let Some(lls) = &self.state.last_league_state {
+                    self.state.last_level = lls.abilities.check_used_points();
+                    println!("[LeagueBot] Level was force checked, new level: {}", self.state.last_level);
+                }
+                self.state.force_check_level = false;
             }
-            self.state.force_check_level = false;
-        }
-        
-        self.check_league_client().await;
-        
-        // Check if more than 10 seconds have passed since started counting
-        let now = chrono::offset::Local::now().timestamp_millis();
-        if self.state.is_counting && (now - self.state.reset_timestamp > 10000 /* 10 sec in ms */) {
-            self.state.stop_counting();
-            let message = self.state.get_results_message(None);
-            client.say(global_state.channel_name.to_owned(), message).await.unwrap();
 
-            match self.state.voting_box.most_voted() {
-                Some(vote) => {
-                    println!("[LeagueBot] Finished counting ability votes");
-                    tokio::spawn(LeagueBot::level_up_ability(vote));
-                    self.state.force_check_level = true;
-                },
-                None => {
-                    println!("[LeagueBot] No Votes lol gg vote again");
-                    self.state.reset();
+            self.check_league_client().await;
+
+            // Check if more than 10 seconds have passed since started counting
+            if self.state.is_counting && (now - self.state.reset_timestamp > 10000 /* 10 sec in ms */) {
+                self.state.stop_counting();
+                let message = self.state.get_results_message(None, Some(&global_state.channel_name.clone().to_owned()));
+                client.say(global_state.channel_name.to_owned(), message).await.unwrap();
+
+                match self.state.voting_box.most_voted() {
+                    Some(vote) => {
+                        println!("[LeagueBot] Finished counting ability votes");
+                        tokio::spawn(LeagueBot::level_up_ability(vote));
+                        self.state.force_check_level = true;
+                    },
+                    None => {
+                        println!("[LeagueBot] No Votes lol gg vote again");
+                        self.state.reset();
+                    }
                 }
             }
-        }
 
-        // Check if the bot should poll for level
-        if self.state.should_poll_for_level {
-            self.state.reset();
-            client.say(
-                global_state.channel_name.to_owned(), 
-                "Vote Q, W, E, R to level an ability!".to_owned()
-            ).await.unwrap();
-            self.state.should_poll_for_level = false;
+            // Check if a lot of people have voted to ff rather quickly
+            if now - self.state.ff_reset_timestamp > 5000 /* 5 sec in ms */ {
+                if self.state.ff_counter > 20 {
+                    println!("[LeagueBot] Forcing FF vote");
+                    tokio::spawn(LeagueBot::try_to_ff());
+                    self.state.ff_reset();
+                }
+            }
+
+            // Check if the bot should poll for level
+            if self.state.should_poll_for_level {
+                self.state.reset();
+                client.say(
+                    global_state.channel_name.to_owned(), 
+                    "Vote Q, W, E, R to level an ability!".to_owned()
+                ).await.unwrap();
+                self.state.should_poll_for_level = false;
+            }
         }
     }
 }
 
 impl LeagueBot {
+    /** Attempt to press the Keyboard buttons to level up an ability */
     async fn level_up_ability(vote: Poggers) {
         // Press the upgrade buttons
         let ability_button = match vote {
@@ -298,7 +334,7 @@ impl LeagueBot {
         };
         KeybdKey::LControlKey.press();
         ability_button.press();
-        sleep(Duration::from_millis(50)).await; // This might become a problem
+        sleep(Duration::from_millis(20)).await; // This might become a problem
         ability_button.release();
         KeybdKey::LControlKey.release();
 
@@ -308,7 +344,28 @@ impl LeagueBot {
             "Leveled up"
             ].concat(), vote);
     }
-
+    /** Attempt to press the KeySequence to initiate a ff vote */
+    async fn try_to_ff() {
+        KeybdKey::EnterKey.press();
+        KeybdKey::EnterKey.release();
+        sleep(Duration::from_millis(20)).await;
+        if env::consts::OS == "windows" {
+            // 0xBF == Slash key on windows
+            KeybdKey::OtherKey(0xBF).press();
+            sleep(Duration::from_millis(20)).await;
+            KeybdKey::OtherKey(0xBF).release();
+        } else {
+            // 0x02f == Slash key on linux
+            KeybdKey::OtherKey(0x02f).press();
+            sleep(Duration::from_millis(20)).await;
+            KeybdKey::OtherKey(0x02f).release();
+        }
+        KeySequence("ff").send();
+        sleep(Duration::from_millis(20)).await;
+        KeybdKey::EnterKey.press();
+        KeybdKey::EnterKey.release();
+    }
+    /** Update the saved state of the league client */
     async fn update_league_client(&mut self) {
         // Run the casul GET request to the client backend
         match self.state.http_client.get(self.state.url.clone()).send().await {
@@ -319,20 +376,22 @@ impl LeagueBot {
                     //println!("{:?}", league_response);
                     if let Some(lls) = &self.state.last_league_state {
                         // Check if the client state has changed since last time checked
-                        if  (league_response != *lls) {
+                        if  league_response != *lls {
                             self.state.last_league_state = Some(league_response);
                             self.state.last_request_timestamp = chrono::offset::Local::now().timestamp_millis();
                         }
                     }
+                    self.state.http_client_connected = true;
                 }
             },
             Err(err) => {
                 println!("{} Error connecting to the league client\n{}", "[LeagueBot]", err);
                 self.state.http_client_attempt_connect = false;
+                self.state.http_client_connected = false;
             },
         }
     }
-
+    /** Check if the level has changed since last checked */
     async fn check_league_client(&mut self) {
         if let Some(lls) = &self.state.last_league_state {
             if !(&self.state.is_counting) && !(&self.state.should_poll_for_level) {
