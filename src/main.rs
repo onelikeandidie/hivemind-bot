@@ -10,13 +10,11 @@ use twitch_irc::TwitchIRCClient;
 use twitch_irc::login::StaticLoginCredentials;
 use twitch_irc::message::ServerMessage;
 
-mod bot;
-mod vote_bot;
-mod league_bot;
+mod bots;
 mod util;
 
-use crate::bot::Bot;
-use crate::util::Config;
+use crate::util::bot::{Bot, Config, GlobalState};
+use crate::bots::{league_bot, vote_bot};
 
 #[tokio::main]
 pub async fn main() {
@@ -32,11 +30,11 @@ pub async fn main() {
     let bot_name = bot_config.bot_name.to_owned();
     let channel_name = bot_config.channel_name.to_owned();
 
-    let state = util::GlobalState { 
+    let state = GlobalState { 
         bot_name: bot_name.clone(),
         channel_name: channel_name.clone()
     };
-    
+
     let config = ClientConfig::new_simple(
         StaticLoginCredentials::new(state.bot_name.clone(), Some(oauth_token))
     );
@@ -44,13 +42,10 @@ pub async fn main() {
     let (mut incoming_messages, client) =
         TwitchIRCClient::<SecureTCPTransport, StaticLoginCredentials>::new(config);
 
-    // Create the message handlers
-    let vote_bot_instance = Mutex::new(vote_bot::VoteBot::default());
-    let league_bot_instance = Mutex::new(league_bot::LeagueBot::default());
-
-    let vbi_arc = Arc::new(vote_bot_instance);
-    let lbi_arc = Arc::new(league_bot_instance);
-
+    // Create the bots
+    // Maybe there's a better way to store pointers like this?
+    let vote_bot_box = Arc::new(Mutex::new(vote_bot::VoteBot::default()));
+    let league_bot_box = Arc::new(Mutex::new(league_bot::LeagueBot::default()));
 
     let (tx, mut rx) = mpsc::channel(100);
 
@@ -94,28 +89,29 @@ pub async fn main() {
     // Second thread with bot message handling
     let thread_client = client.clone();
     let thread_state = state.clone();
-    let vote_bot_instance = vbi_arc.clone();
-    let league_bot_instance = lbi_arc.clone();
+    let vb_arc = vote_bot_box.clone();
+    let lb_arc = league_bot_box.clone();
     let message_handler_handle = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
             // Upstream messages to bots
-            vote_bot_instance.lock().await.handle_message(&thread_state, &thread_client, &msg).await;
-            league_bot_instance.lock().await.handle_message(&thread_state, &thread_client, &msg).await;
+            vb_arc.lock().await.handle_message(&thread_state, &thread_client, &msg).await;
+            lb_arc.lock().await.handle_message(&thread_state, &thread_client, &msg).await;
         }
     });
 
     // Third thread with bot updating every 2 seconds
     let thread_client = client.clone();
     let thread_state = state.clone();
-    let vote_bot_instance = vbi_arc.clone();
-    let league_bot_instance = lbi_arc.clone();
+    let vb_arc = vote_bot_box.clone();
+    let lb_arc = league_bot_box.clone();
     let updater_handle = tokio::spawn(async move {
-        let mut i = interval(Duration::from_secs(1));
-        
+        let mut it = interval(Duration::from_secs(1));
+        // Update loop, waits for the tick
         loop {
-            i.tick().await;
-            vote_bot_instance.lock().await.update(&thread_state, &thread_client).await;
-            league_bot_instance.lock().await.update(&thread_state, &thread_client).await;
+            it.tick().await;
+            // Update bots
+            vb_arc.lock().await.update(&thread_state, &thread_client).await;
+            lb_arc.lock().await.update(&thread_state, &thread_client).await;
         }
     });
 

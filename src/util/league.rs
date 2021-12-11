@@ -1,29 +1,4 @@
 use serde::{Deserialize, Serialize};
-use twitch_irc::message::{PrivmsgMessage};
-
-pub fn is_mod(msg: &PrivmsgMessage/* , sender: &TwitchUserBasics */) -> bool {
-    //sender.id == "207883858";
-    for badge in &msg.badges {
-        if badge.name == "moderator" || badge.name == "broadcaster" {
-            return true;
-        }
-    }
-    false
-}
-
-#[derive(Clone)]
-pub struct GlobalState {
-    pub bot_name: String,
-    pub channel_name: String,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct Config {
-    pub oauth_token: String,
-    pub bot_name: String,
-    pub channel_name: String,
-}
-
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct LeagueResponse {

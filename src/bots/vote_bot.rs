@@ -1,6 +1,6 @@
 use twitch_irc::message::TwitchUserBasics;
 use async_trait::async_trait;
-use crate::{bot::{Bot}, util::{GlobalState, is_mod}};
+use crate::util::{bot::{Bot, GlobalState}, twitch::is_mod};
 
 pub struct Votes (i32, i32);
 
