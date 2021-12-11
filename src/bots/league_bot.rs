@@ -4,7 +4,7 @@ use tokio::time::sleep;
 //use std::{thread, time::{Duration}};
 use twitch_irc::message::{PrivmsgMessage, TwitchUserBasics};
 use async_trait::async_trait;
-use crate::{bot::{Bot}, util::{self, GlobalState, LeagueResponse, is_mod}};
+use crate::util::{bot::{Bot, GlobalState}, twitch::is_mod, league::{LeagueResponse}};
 
 #[derive(Clone, Copy)]
 // Q, W, E, R
@@ -372,7 +372,7 @@ impl LeagueBot {
             Ok(res) => {
                 //println!("{:?}", res);
                 if res.status() == 200 {
-                    let league_response: util::LeagueResponse = res.json().await.unwrap();
+                    let league_response: LeagueResponse = res.json().await.unwrap();
                     //println!("{:?}", league_response);
                     if let Some(lls) = &self.state.last_league_state {
                         // Check if the client state has changed since last time checked
