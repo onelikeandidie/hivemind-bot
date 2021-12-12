@@ -2,7 +2,13 @@ use twitch_irc::message::TwitchUserBasics;
 use async_trait::async_trait;
 use crate::util::{bot::{Bot, GlobalState}, twitch::is_mod};
 
-pub struct Votes (i32, i32);
+pub struct Votes (pub i32, pub i32);
+
+impl Default for Votes {
+    fn default() -> Self {
+        Self(0, 0)
+    }
+}
 
 pub struct State {
     pub is_counting: bool,
@@ -10,6 +16,7 @@ pub struct State {
     pub who_voted: Vec<String>,
     pub reset_timestamp: i64,
     pub bot_is_enabled: bool,
+    pub message: Option<String>,
 }
 
 impl State {
@@ -60,6 +67,7 @@ impl Default for State {
             who_voted: Vec::new(),
             reset_timestamp: chrono::offset::Local::now().timestamp_millis(),
             bot_is_enabled: true,
+            message: None,
         }
     }
 }
@@ -81,7 +89,10 @@ impl Bot for VoteBot {
     }
 
     async fn handle_message(&mut self, global_state: &GlobalState, client: &twitch_irc::TwitchIRCClient<twitch_irc::SecureTCPTransport, twitch_irc::login::StaticLoginCredentials>, msg: &twitch_irc::message::PrivmsgMessage) {
-        match msg.message_text.to_uppercase().as_str() {
+        let upper = msg.message_text.to_uppercase();
+        println!("{:?}", upper.trim().split(" "));
+        let message_args = upper.trim().split(" ").collect::<Vec<&str>>();
+        match message_args[0] {
             "1" | "YES" => {
                 if self.state.can_vote(&msg.sender) {
                     self.state.add_vote(1, 0, &msg.sender);

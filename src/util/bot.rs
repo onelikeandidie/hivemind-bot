@@ -16,6 +16,7 @@ pub struct Config {
     pub oauth_token: String,
     pub bot_name: String,
     pub channel_name: String,
+    pub draw_window: bool,
 }
 
 #[async_trait]

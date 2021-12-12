@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use display::window::GameInit;
+use ggez::winit::platform::windows::EventLoopExtWindows;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tokio::time::interval;
@@ -12,9 +14,11 @@ use twitch_irc::message::ServerMessage;
 
 mod bots;
 mod util;
+mod display;
 
 use crate::util::bot::{Bot, Config, GlobalState};
 use crate::bots::{league_bot, vote_bot};
+use display::window::Window;
 
 #[tokio::main]
 pub async fn main() {
@@ -29,6 +33,7 @@ pub async fn main() {
     let oauth_token = bot_config.oauth_token.to_owned();
     let bot_name = bot_config.bot_name.to_owned();
     let channel_name = bot_config.channel_name.to_owned();
+    let draw_window = bot_config.draw_window;
 
     let state = GlobalState { 
         bot_name: bot_name.clone(),
@@ -44,8 +49,8 @@ pub async fn main() {
 
     // Create the bots
     // Maybe there's a better way to store pointers like this?
-    let vote_bot_box = Arc::new(Mutex::new(vote_bot::VoteBot::default()));
-    let league_bot_box = Arc::new(Mutex::new(league_bot::LeagueBot::default()));
+    let vb_pointer = Arc::new(Mutex::new(vote_bot::VoteBot::default()));
+    let lb_pointer = Arc::new(Mutex::new(league_bot::LeagueBot::default()));
 
     let (tx, mut rx) = mpsc::channel(100);
 
@@ -89,11 +94,12 @@ pub async fn main() {
     // Second thread with bot message handling
     let thread_client = client.clone();
     let thread_state = state.clone();
-    let vb_arc = vote_bot_box.clone();
-    let lb_arc = league_bot_box.clone();
+    let vb_arc = vb_pointer.clone();
+    let lb_arc = lb_pointer.clone();
     let message_handler_handle = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
             // Upstream messages to bots
+            println!("{}", msg.message_text);
             vb_arc.lock().await.handle_message(&thread_state, &thread_client, &msg).await;
             lb_arc.lock().await.handle_message(&thread_state, &thread_client, &msg).await;
         }
@@ -102,8 +108,8 @@ pub async fn main() {
     // Third thread with bot updating every 2 seconds
     let thread_client = client.clone();
     let thread_state = state.clone();
-    let vb_arc = vote_bot_box.clone();
-    let lb_arc = league_bot_box.clone();
+    let vb_arc = vb_pointer.clone();
+    let lb_arc = lb_pointer.clone();
     let updater_handle = tokio::spawn(async move {
         let mut it = interval(Duration::from_secs(1));
         // Update loop, waits for the tick
@@ -117,6 +123,20 @@ pub async fn main() {
 
     // join a channel
     client.join(channel_name.clone().to_owned());
+
+    if draw_window {
+        // Fourth thread with window and display
+        let poop_1 = lb_pointer.clone();
+        let poop_2 = vb_pointer.clone();
+        let window = Window { 
+            config: GameInit {
+                league_bot: poop_1,
+                vote_bot:   poop_2,
+                config:     bot_config.clone(),
+            }
+        };
+        window.init_window().await;
+    }
 
     // keep the tokio executor alive.
     // If you return instead of waiting the background task will exit.

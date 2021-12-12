@@ -1,0 +1,3 @@
+tile_size_x=32
+tile_size_y=32
+atlas_path="/symbols/atlas.png"

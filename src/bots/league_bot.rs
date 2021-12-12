@@ -8,10 +8,22 @@ use crate::util::{bot::{Bot, GlobalState}, twitch::is_mod, league::{LeagueRespon
 
 #[derive(Clone, Copy)]
 // Q, W, E, R
-pub struct Votes (i32, i32, i32, i32);
+pub struct Votes (pub i32, pub i32, pub i32, pub i32);
 
 impl Votes {
-    fn most_voted(& self) -> Option<Poggers> {
+    pub fn most_voted_index(& self) -> Option<usize> {
+        let values = [self.0, self.1, self.2, self.3];
+        if values.iter().max() == values.iter().min() {
+            return None;
+        }
+        if let Some(max) = values.iter().max() {
+            values.iter().position(|&x| x == *max)
+        } else {
+            None
+        }
+    }
+
+    pub fn most_voted(& self) -> Option<Poggers> {
         let values = [self.0, self.1, self.2, self.3];
         let max = values.iter().max().unwrap();
         if let Some(index_of_max) = values.iter().position(|&x| x == *max) {
@@ -28,7 +40,13 @@ impl Votes {
     }
 }
 
-enum Poggers {
+impl Default for Votes {
+    fn default() -> Self {
+        Self(0, 0, 0, 0)
+    }
+}
+
+pub enum Poggers {
     Q,W,E,R
 }
 
@@ -201,7 +219,10 @@ impl Bot for LeagueBot {
     }
 
     async fn handle_message(&mut self, global_state: &GlobalState, client: &twitch_irc::TwitchIRCClient<twitch_irc::SecureTCPTransport, twitch_irc::login::StaticLoginCredentials>, msg: &PrivmsgMessage) {
-        match msg.message_text.to_uppercase().as_str() {
+        let upper = msg.message_text.to_uppercase();
+        println!("{:?}", upper.trim().split(" "));
+        let message_args = upper.trim().split(" ").collect::<Vec<&str>>();
+        match message_args[0] {
             "Q" | "1" => {
                 if self.state.can_vote(&msg.sender) {
                     self.state.add_vote(1, 0, &msg.sender);
